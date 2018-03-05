@@ -103,6 +103,11 @@ use std::num::Wrapping;
 use std::ptr;
 use std::time::Duration;
 
+#[cfg(target_pointer_width="32")]
+const USIZE_LEN: usize = 4;
+#[cfg(target_pointer_width="64")]
+const USIZE_LEN: usize = 8;
+
 #[cfg(test)]
 mod tests;
 
@@ -172,6 +177,10 @@ pub mod snmp {
     pub const TYPE_OPAQUE:     u8 = asn1::CLASS_APPLICATION | 4;
     pub const TYPE_COUNTER64:  u8 = asn1::CLASS_APPLICATION | 6;
 
+    pub const SNMP_NOSUCHOBJECT:   u8 = (asn1::CLASS_CONTEXTSPECIFIC | asn1::PRIMITIVE | 0x0); /* 80=128 */
+    pub const SNMP_NOSUCHINSTANCE: u8 = (asn1::CLASS_CONTEXTSPECIFIC | asn1::PRIMITIVE | 0x1); /* 81=129 */
+    pub const SNMP_ENDOFMIBVIEW:   u8 = (asn1::CLASS_CONTEXTSPECIFIC | asn1::PRIMITIVE | 0x2); /* 82=130 */
+
     pub const ERRSTATUS_NOERROR:             u32 =  0;
     pub const ERRSTATUS_TOOBIG:              u32 =  1;
     pub const ERRSTATUS_NOSUCHNAME:          u32 =  2;
@@ -194,7 +203,7 @@ pub mod snmp {
 }
 
 pub mod pdu {
-    use super::{BUFFER_SIZE, asn1, snmp, Value};
+    use super::{BUFFER_SIZE, USIZE_LEN, asn1, snmp, Value};
     use std::{fmt, mem, ops, ptr};
 
     pub struct Buf {
@@ -287,7 +296,11 @@ pub mod pdu {
                 let leading_byte = length_len as u8 | 0b1000_0000;
                 self.scribble_bytes(|o| {
                     assert!(o.len() >= length_len + 1);
+<<<<<<< HEAD
                     let bytes = unsafe { mem::transmute::<u64, [u8; 8]>(len.to_be() as u64) };
+=======
+                    let bytes = unsafe { mem::transmute::<usize, [u8; USIZE_LEN]>(len.to_be()) };
+>>>>>>> upstream/master
                     let write_offset = o.len() - length_len - 1;
                     o[write_offset] = leading_byte;
                     o[write_offset + 1..].copy_from_slice(&bytes[num_leading_nulls..]);
@@ -300,6 +313,18 @@ pub mod pdu {
             let len = self.push_i64(n);
             self.push_length(len);
             self.push_byte(asn1::TYPE_INTEGER);
+        }
+
+        fn push_endofmibview(&mut self) {
+            self.push_chunk(&[snmp::SNMP_ENDOFMIBVIEW, 0]);
+        }
+
+        fn push_nosuchobject(&mut self) {
+            self.push_chunk(&[snmp::SNMP_NOSUCHOBJECT, 0]);
+        }
+
+        fn push_nosuchinstance(&mut self) {
+            self.push_chunk(&[snmp::SNMP_NOSUCHINSTANCE, 0]);
         }
 
         fn push_counter32(&mut self, n: u32) {
@@ -531,6 +556,44 @@ pub mod pdu {
             buf.push_integer(snmp::VERSION_2 as i64);
         });
     }
+
+    pub fn build_response(community: &[u8], req_id: i32, values: &[(&[u32], Value)], buf: &mut Buf) {
+        buf.reset();
+        buf.push_sequence(|buf| {
+            buf.push_constructed(snmp::MSG_RESPONSE, |buf| {
+                buf.push_sequence(|buf| {
+                    for &(ref name, ref val) in values.iter().rev() {
+                        buf.push_sequence(|buf| {
+                            use Value::*;
+                            match *val {
+                                Boolean(b)                  => buf.push_boolean(b),
+                                Null                        => buf.push_null(),
+                                Integer(i)                  => buf.push_integer(i),
+                                OctetString(ostr)           => buf.push_octet_string(ostr),
+                                ObjectIdentifier(ref objid) => buf.push_object_identifier_raw(objid.raw()),
+                                IpAddress(ref ip)           => buf.push_ipaddress(ip),
+                                Counter32(i)                => buf.push_counter32(i),
+                                Unsigned32(i)               => buf.push_unsigned32(i),
+                                Timeticks(tt)               => buf.push_timeticks(tt),
+                                Opaque(bytes)               => buf.push_opaque(bytes),
+                                Counter64(i)                => buf.push_counter64(i),
+                                EndOfMibView                => buf.push_endofmibview(),
+                                NoSuchObject                => buf.push_nosuchobject(),
+                                NoSuchInstance              => buf.push_nosuchinstance(),
+                                _ => unimplemented!(),
+                            }
+                            buf.push_object_identifier(name); // name
+                        });
+                    }
+                });
+                buf.push_integer(0);
+                buf.push_integer(0);
+                buf.push_integer(req_id as i64);
+            });
+            buf.push_octet_string(community);
+            buf.push_integer(snmp::VERSION_2 as i64);
+        });
+    }
 }
 
 fn decode_i64(i: &[u8]) -> SnmpResult<i64> {
@@ -720,11 +783,11 @@ impl<'a> AsnReader<'a> {
                     return Err(SnmpError::AsnInvalidLen);
                 }
 
-                let mut bytes = [0u8; 8];
-                bytes[(mem::size_of::<usize>() - length_len)..]
+                let mut bytes = [0u8; USIZE_LEN];
+                bytes[(USIZE_LEN - length_len)..]
                     .copy_from_slice(&tail[..length_len]);
 
-                o = unsafe { mem::transmute::<[u8; 8], i64>(bytes)} as usize;
+                o = unsafe { mem::transmute::<[u8; USIZE_LEN], usize>(bytes).to_be()};
                 self.inner = &tail[length_len as usize..];
                 Ok(o)
             }
@@ -949,6 +1012,10 @@ pub enum Value<'a> {
     Opaque(&'a [u8]),
     Counter64(u64),
 
+    EndOfMibView,
+    NoSuchObject,
+    NoSuchInstance,
+
     SnmpGetRequest(AsnReader<'a>),
     SnmpGetNextRequest(AsnReader<'a>),
     SnmpGetBulkRequest(AsnReader<'a>),
@@ -978,6 +1045,10 @@ impl<'a> fmt::Debug for Value<'a> {
             Timeticks(val)               => write!(f, "TIMETICKS: {}", val),
             Opaque(val)                  => write!(f, "OPAQUE: {:?}", val),
             Counter64(val)               => write!(f, "COUNTER64: {}", val),
+
+            EndOfMibView                 => write!(f, "END OF MIB VIEW"),
+            NoSuchObject                 => write!(f, "NO SUCH OBJECT"),
+            NoSuchInstance               => write!(f, "NO SUCH INSTANCE"),
 
             SnmpGetRequest(ref val)      => write!(f, "SNMP GET REQUEST: {:#?}", val),
             SnmpGetNextRequest(ref val)  => write!(f, "SNMP GET NEXT REQUEST: {:#?}", val),
