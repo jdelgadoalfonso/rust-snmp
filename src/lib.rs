@@ -296,11 +296,7 @@ pub mod pdu {
                 let leading_byte = length_len as u8 | 0b1000_0000;
                 self.scribble_bytes(|o| {
                     assert!(o.len() >= length_len + 1);
-<<<<<<< HEAD
-                    let bytes = unsafe { mem::transmute::<u64, [u8; 8]>(len.to_be() as u64) };
-=======
                     let bytes = unsafe { mem::transmute::<usize, [u8; USIZE_LEN]>(len.to_be()) };
->>>>>>> upstream/master
                     let write_offset = o.len() - length_len - 1;
                     o[write_offset] = leading_byte;
                     o[write_offset + 1..].copy_from_slice(&bytes[num_leading_nulls..]);
