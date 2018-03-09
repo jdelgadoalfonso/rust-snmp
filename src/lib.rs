@@ -97,7 +97,6 @@
 #![allow(unknown_lints, doc_markdown)]
 
 extern crate tokio;
-extern crate tokio_core;
 
 use std::fmt;
 use std::io;
@@ -107,7 +106,7 @@ use std::num::Wrapping;
 use std::ptr;
 use std::time::Duration;
 
-//use tokio::net::UdpSocket;
+//use UdpSocket;
 
 #[cfg(target_pointer_width="32")]
 const USIZE_LEN: usize = 4;
@@ -1105,7 +1104,7 @@ impl<'a> Iterator for AsnReader<'a> {
 
 /// Synchronous SNMPv2 client.
 pub struct SyncSession {
-    socket: tokio::net::UdpSocket,
+    socket: UdpSocket,
     community: Vec<u8>,
     req_id: Wrapping<i32>,
     send_pdu: pdu::Buf,
@@ -1119,8 +1118,8 @@ impl SyncSession {
         let bind_addr = "0.0.0.0:0".parse::<SocketAddr>().unwrap();
         let bind_v6_addr = SocketAddrV6::new(Ipv6Addr::new(0,0,0,0,0,0,0,0), 0, 0, 0);
         let socket = match destination.to_socket_addrs()?.next() {
-            Some(SocketAddr::V4(_)) => tokio::net::UdpSocket::bind(&bind_addr)?,
-            Some(SocketAddr::V6(_)) => tokio::net::UdpSocket::bind(&SocketAddr::V6(bind_v6_addr))?,
+            Some(SocketAddr::V4(_)) => UdpSocket::bind(&bind_addr)?,
+            Some(SocketAddr::V6(_)) => UdpSocket::bind(&SocketAddr::V6(bind_v6_addr))?,
             None => panic!("empty list of socket addrs"),
         };
 //        socket.set_read_timeout(timeout)?;
@@ -1134,7 +1133,7 @@ impl SyncSession {
         })
     }
 
-    fn send_and_recv(socket: &mut tokio::net::UdpSocket, pdu: &pdu::Buf, out: &mut [u8]) -> SnmpResult<usize> {
+    fn send_and_recv(socket: &mut UdpSocket, pdu: &pdu::Buf, out: &mut [u8]) -> SnmpResult<usize> {
         if let Ok(_pdu_len) = socket.send(&pdu[..]) {
             match socket.recv(out) {
                 Ok(len) => Ok(len),
