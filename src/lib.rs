@@ -236,6 +236,12 @@ pub mod pdu {
         }
     }
 
+    impl AsRef<[u8]> for Buf {
+        fn as_ref(&self) -> &[u8] {
+            &self.buf[BUFFER_SIZE - self.len..]
+        }
+    }
+
     impl Buf {
 
         fn available(&mut self) -> &mut [u8] {
