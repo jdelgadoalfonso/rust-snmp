@@ -9,8 +9,3 @@ documentation = "https://docs.rs/crate/snmp"
 readme = "README.md"
 keywords = ["networking", "snmp", "monitoring"]
 
-
-[dependencies]
-tokio = "0.1.2"
-futures = "*"
-tokio-timer = "0.1"

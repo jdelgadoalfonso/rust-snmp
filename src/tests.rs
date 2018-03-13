@@ -1,5 +1,6 @@
 use super::{AsnReader, SnmpError};
 use super::{pdu, snmp};
+use super::SyncSession;
 
 #[test]
 fn build_getnext_pdu() {

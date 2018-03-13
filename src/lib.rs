@@ -96,17 +96,13 @@
 #![cfg_attr(feature = "private-tests", feature(test))]
 #![allow(unknown_lints, doc_markdown)]
 
-extern crate tokio;
-
 use std::fmt;
 use std::io;
 use std::mem;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs, UdpSocket, SocketAddrV6, SocketAddrV4};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs, UdpSocket};
 use std::num::Wrapping;
 use std::ptr;
 use std::time::Duration;
-
-//use UdpSocket;
 
 #[cfg(target_pointer_width="32")]
 const USIZE_LEN: usize = 4;
@@ -1115,14 +1111,13 @@ impl SyncSession {
     pub fn new(destination: &str, community: &[u8], timeout: Option<Duration>, starting_req_id: i32) -> io::Result<Self>
 
     {
-        let bind_addr = "0.0.0.0:0".parse::<SocketAddr>().unwrap();
-        let bind_v6_addr = SocketAddrV6::new(Ipv6Addr::new(0,0,0,0,0,0,0,0), 0, 0, 0);
         let socket = match destination.to_socket_addrs()?.next() {
-            Some(SocketAddr::V4(_)) => UdpSocket::bind(&bind_addr)?,
-            Some(SocketAddr::V6(_)) => UdpSocket::bind(&SocketAddr::V6(bind_v6_addr))?,
+            Some(SocketAddr::V4(_)) => UdpSocket::bind((Ipv4Addr::new(0,0,0,0), 0))?,
+            Some(SocketAddr::V6(_)) => UdpSocket::bind((Ipv6Addr::new(0,0,0,0,0,0,0,0), 0))?,
             None => panic!("empty list of socket addrs"),
         };
-//        socket.set_read_timeout(timeout)?;
+
+        socket.set_read_timeout(timeout)?;
         socket.connect(&destination.parse::<SocketAddr>().unwrap())?;
         Ok(SyncSession {
             socket: socket,
